@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Headland Archaeology - Geophysics RLB Map (internal)</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background:#f5f5f5; }
+.container { max-width:1400px; margin:0 auto; padding:20px; }
+.header { background:white; padding:10px 16px; border-radius:8px; margin-bottom:12px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+.header h1 { font-size:18px; font-weight:700; color:#127985; }
+.map-container { background:white; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+
+/* ── top bar: search + tender preview buttons ── */
+.controls {
+    padding:10px; background:#127985; border-bottom:1px solid #dee2e6;
+    position:relative; z-index:1100;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.controls label { font-weight:600; color:#fff; }
+.search-wrap { position:relative; width:300px; }
+.search-wrap input {
+    width:100%; padding:6px 12px; border:1px solid #ced4da; border-radius:4px; font-size:14px;
+}
+.bar-button {
+    padding:6px 14px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer;
+    border:1px solid #fff; transition:background 0.2s ease;
+}
+.bar-button.primary { background:#1aa6b3; color:#fff; border-color:#1aa6b3; }
+.bar-button.primary:hover { background:#158f9a; border-color:#158f9a; }
+.bar-button.secondary { background:transparent; color:#fff; }
+.bar-button.secondary:hover { background:rgba(255,255,255,0.15); }
+
+#searchDropdown {
+    position:absolute; background:white; border:1px solid #ccc; max-height:200px; overflow-y:auto;
+    width:100%; display:none; z-index:1200; top:100%; left:0; margin-top:5px;
+    border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.2);
+}
+#searchDropdown div { padding:5px 10px; cursor:pointer; }
+#searchDropdown div:hover, #searchDropdown .selected { background:#3498db; color:white; }
+
+#map { height:600px; width:100%; }
+
+/* ── popups ── */
+.leaflet-popup-content { margin:15px; min-width:280px; }
+.popup-field { margin:8px 0; display:flex; }
+.popup-label { font-weight:600; color:#7f8c8d; min-width:120px; }
+.popup-value { color:#2c3e50; flex:1; white-space:pre-wrap; }
+.popup-scroll { max-height:260px; overflow-y:auto; padding-right:4px; }
+.popup-actions { margin-top:10px; padding-top:8px; border-top:1px solid #eee; text-align:right; }
+.popup-btn { background:#127985; color:#fff; border:none; border-radius:5px; padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; }
+.popup-btn:hover { background:#0f6f78; }
+.popup-btn.danger { background:#c0392b; }
+.popup-btn.danger:hover { background:#a93226; }
+.popup-note { font-size:12px; color:#888; font-style:italic; }
+
+/* ── status bar ── */
+.stats { padding:15px; background:#e9ecef; border-top:1px solid #dee2e6; font-size:14px; color:#495057; }
+.preview-status { margin-left:16px; color:#e30613; font-weight:600; }
+.user-text { float:right; color:#6c757d; }
+
+/* ── clusters, centroid dots, labels ── */
+.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background-color:rgba(18,121,133,0.6); }
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+    background-color:rgba(18,121,133,0.85); color:white; font-weight:bold;
+}
+.centroid-dot {
+    width:12px; height:12px; border-radius:50%;
+    background:#127985; border:3px solid white; box-shadow:0 0 6px rgba(0,0,0,0.4);
+}
+.rlb-label { background:none; border:none; }
+.rlb-label span {
+    display:inline-block; transform:translate(-50%, -50%);
+    background:rgba(255,255,255,0.85); color:#127985; border:1px solid #127985; border-radius:4px;
+    padding:1px 6px; font-size:12px; font-weight:700; white-space:nowrap;
+}
+
+/* ── legend ── */
+.map-legend {
+    background:rgba(255,255,255,0.95); padding:8px 12px; border-radius:6px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.2); font-size:12px; line-height:1.4; color:#333;
+}
+.legend-title { font-weight:700; margin-bottom:4px; color:#127985; }
+.legend-row { display:flex; align-items:center; gap:8px; margin:4px 0; }
+.legend-swatch { width:18px; height:12px; border:2px solid; border-radius:2px; flex-shrink:0; }
+.legend-cluster {
+    width:20px; height:20px; border-radius:50%; flex-shrink:0;
+    background:rgba(18,121,133,0.85); color:#fff; font-size:10px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 3px rgba(18,121,133,0.4);
+}
+.legend-dot {
+    width:12px; height:12px; border-radius:50%; flex-shrink:0; margin:0 3px;
+    background:#127985; border:2px solid #fff; box-shadow:0 0 4px rgba(0,0,0,0.4);
+}
+.legend-label {
+    border:1px solid #127985; color:#127985; background:#fff; border-radius:3px;
+    padding:0 4px; font-weight:700; font-size:10px; flex-shrink:0;
+}
+
+/* ── save form ── */
+.modal { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:3000; display:flex; align-items:center; justify-content:center; }
+.modal.hidden { display:none; }
+.modal-box { background:#fff; border-radius:8px; padding:20px 24px; width:440px; max-width:92vw; box-shadow:0 8px 24px rgba(0,0,0,0.3); }
+.modal-box h3 { color:#127985; margin-bottom:6px; }
+.modal-note { font-size:12px; color:#666; margin-bottom:14px; }
+.modal-box label { display:block; font-size:13px; font-weight:600; color:#444; margin-bottom:10px; }
+.modal-box input, .modal-box textarea {
+    display:block; width:100%; margin-top:4px; padding:6px 10px; border:1px solid #ced4da;
+    border-radius:4px; font:inherit; font-weight:400; resize:vertical;
+}
+.modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:6px; }
+.modal-btn { background:#127985; color:#fff; border:none; border-radius:6px; padding:8px 16px; font-weight:600; cursor:pointer; }
+.modal-btn.secondary { background:#fff; color:#127985; border:1px solid #127985; }
+.modal-btn:disabled { opacity:0.6; cursor:wait; }
+
+@media (max-width: 600px) {
+    .search-wrap { width:100%; }
+    .bar-button { flex:1 1 auto; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Geophysics internal map</h1>
+  </div>
+  <div class="map-container">
+    <div class="controls">
+      <label for="searchInput">Search:</label>
+      <div class="search-wrap">
+        <input type="search" id="searchInput" placeholder="Project code or sub label..." autocomplete="off">
+        <div id="searchDropdown"></div>
+      </div>
+      <button id="previewButton" class="bar-button primary">Preview tender file</button>
+      <button id="clearPreviewButton" class="bar-button secondary">Clear preview</button>
+      <input type="file" id="previewInput" accept=".zip,.gpkg,.kml,.kmz,.geojson,.json" hidden>
+    </div>
+    <div id="map"></div>
+    <div class="stats">
+      <span id="statsText">Loading RLBs from GeoJSON...</span>
+      <span id="previewStatus" class="preview-status"></span>
+      <span id="userText" class="user-text"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Save-as-permanent form -->
+<div id="saveModal" class="modal hidden">
+  <div class="modal-box">
+    <h3>Save as permanent boundary</h3>
+    <p class="modal-note" id="saveModalNote"></p>
+    <label>Project code *<input id="fCode" maxlength="20" placeholder="e.g. SPAG26"></label>
+    <label>Sub label (optional)<input id="fSub" placeholder="e.g. Phase 2, Option B, North field"></label>
+    <label>Description (optional)<textarea id="fDesc" rows="2"></textarea></label>
+    <label>Notes (optional)<textarea id="fNotes" rows="3"></textarea></label>
+    <div class="modal-actions">
+      <button id="saveCancel" class="modal-btn secondary">Cancel</button>
+      <button id="saveConfirm" class="modal-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== CONFIG =====
+const GEOJSON_PATH = 'geophys_rlb.geojson';   // WGS84 / EPSG:4326, same folder as this page
+const FIELD = {
+  fid: 'fid',
+  code: 'proj_code',
+  sub: 'sub_label',
+  desc: 'descriptio',
+  notes: 'Notes',
+  hectare: null,       // null = auto-detect the first property whose name contains "hect"
+  createdBy: 'CreatedBy',
+  createdAt: 'CreatedAt',
+  editedBy: 'EditedBy',
+  editedAt: 'EditedAt'
+};
+// fields shown in the popup, in order: [property name, label]
+const POPUP_FIELDS = [
+  [FIELD.code,     'Project Code'],
+  [FIELD.sub,      'Sub Label'],
+  [FIELD.desc,     'Description'],
+  [FIELD.notes,    'Notes'],
+  [FIELD.editedBy, 'Last edited by'],
+  [FIELD.editedAt, 'Last edited at']
+  // ['__hectare__', 'Hectares']   // un-comment to show hectares
+];
+const DATETIME_FIELDS = new Set([FIELD.createdAt, FIELD.editedAt]);
+const CLUSTER_MAX_ZOOM = 10;   // at this zoom and below, numbered clusters are drawn on top of the polygons
+const LABEL_MIN_ZOOM = 11;     // project code labels appear at this zoom and closer
+
+const POLY_STYLE    = { color:'#127985', weight:2, fillColor:'#1aa6b3', fillOpacity:0.25 };
+const HOVER_STYLE   = { color:'#c0392b', weight:3, fillOpacity:0.4 };
+const PREVIEW_STYLE = { color:'#e30613', weight:3, fillColor:'#e30613', fillOpacity:0.2 };
+
+// ===== MAP =====
+const map = L.map('map', { zoomControl:false }).setView([54.6083, -3.6167], 6);
+L.control.zoom({ position:'bottomright' }).addTo(map);
+
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap contributors', maxZoom:19 });
+const greyscale = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution:'Tiles © Esri', maxZoom:16 });
+const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution:'Tiles © Esri & contributors', maxZoom:19 });
+greyscale.addTo(map);
+L.control.layers({ greyscale:greyscale, 'OpenStreetMap':osm, Satellite:esriSat }, null, { position:'topright' }).addTo(map);
+map.attributionControl.setPrefix(false);
+
+const polygonLayer = L.featureGroup().addTo(map);
+const clusterLayer = L.markerClusterGroup({ maxClusterRadius:50, showCoverageOnHover:false, zoomToBoundsOnClick:true });
+const labelLayer = L.layerGroup().addTo(map);
+
+map.createPane('previewPane');
+map.getPane('previewPane').style.zIndex = 450;   // tender preview always above the RLB polygons
+const previewLayer = L.featureGroup().addTo(map);
+
+// ===== LEGEND =====
+const legend = L.control({ position:'bottomleft' });
+legend.onAdd = () => {
+  const d = L.DomUtil.create('div', 'map-legend');
+  d.innerHTML = `
+    <div class="legend-title">Legend</div>
+    <div class="legend-row"><span class="legend-swatch" style="background:rgba(26,166,179,0.35);border-color:#127985"></span>RLB</div>
+    <div class="legend-row"><span class="legend-swatch" style="background:rgba(227,6,19,0.2);border-color:#e30613"></span>Tender preview (not saved)</div>`;
+  L.DomEvent.disableClickPropagation(d);
+  return d;
+};
+legend.addTo(map);
+
+// ===== STATE =====
+let allSites = [];            // { props, polygon, marker, bounds }
+let currentSites = [];
+let currentUser = '';
+let lastPreview = null;       // { fileName, data, allPolygons }
+
+// ===== HELPERS =====
+function esc(v) {
+  return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function val(props, key) {
+  const v = props[key];
+  return (v === null || v === undefined) ? '' : String(v).trim();
+}
+function siteLabel(p) {
+  const code = val(p, FIELD.code), sub = val(p, FIELD.sub);
+  return sub ? `${code} – ${sub}` : code;
+}
+// "2026-11-02T11:51:00" or "2026/11/02 11:51:00" -> "02/11/2026 11:51"
+function formatDateTime(v) {
+  const s = String(v).trim().replace(/\//g, '-').replace('T', ' ');
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : String(v);
+}
+function hectareKey(p) {
+  if (FIELD.hectare) return FIELD.hectare;
+  return Object.keys(p).find(k => k.toLowerCase().includes('hect')) || null;
+}
+function formatHectare(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? v : `${n.toLocaleString('en-GB', { maximumFractionDigits:2 })} ha`;
+}
+function isOwner(p) {
+  const by = val(p, FIELD.createdBy);
+  return currentUser && by && by.toLowerCase() === currentUser.toLowerCase();
+}
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  let data = {};
+  try { data = await r.json(); } catch (e) { /* no JSON body */ }
+  if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+  return data;
+}
+
+// ===== POPUP (permanent RLBs) =====
+function createPopup(p) {
+  let html = '<div class="popup-scroll">';
+  for (const [key, label] of POPUP_FIELDS) {
+    let v;
+    if (key === '__hectare__') {
+      const hk = hectareKey(p);
+      v = hk ? val(p, hk) : '';
+      if (v) v = formatHectare(v);
+    } else {
+      v = val(p, key);
+      if (v && DATETIME_FIELDS.has(key)) v = formatDateTime(v);
+    }
+    if (v) html += `<div class="popup-field"><span class="popup-label">${label}:</span><span class="popup-value">${esc(v)}</span></div>`;
+  }
+  html += '</div>';
+  if (isOwner(p) && val(p, FIELD.fid)) {
+    html += `<div class="popup-actions"><button class="popup-btn danger" data-action="delete" data-fid="${esc(val(p, FIELD.fid))}">Delete this boundary</button></div>`;
+  }
+  return html;
+}
+
+// ===== BUILD =====
+function buildSites(geojson) {
+  allSites = [];
+  (geojson.features || []).forEach(f => {
+    if (!f.geometry) return;
+    const p = f.properties || {};
+    const polygon = L.geoJSON(f, { style: POLY_STYLE });
+    polygon.bindPopup(createPopup(p), { maxWidth: 420 });
+    polygon.on('mouseover', e => e.layer.setStyle(HOVER_STYLE));
+    polygon.on('mouseout',  e => e.layer.setStyle(POLY_STYLE));
+
+    const bounds = polygon.getBounds();
+    if (!bounds.isValid()) return;
+    if (bounds.getSouth() < -90 || bounds.getNorth() > 90 ||
+        bounds.getWest() < -180 || bounds.getEast() > 180) {
+      console.warn('Skipped feature with non-WGS84 coordinates:', p[FIELD.code], bounds.toBBoxString());
+      return;
+    }
+    const marker = L.marker(bounds.getCenter(), {
+      icon: L.divIcon({ className:'', html:'<div class="centroid-dot"></div>', iconSize:[12,12], iconAnchor:[6,6] })
+    });
+    marker.on('click', () => zoomToSite(site));
+
+    const site = { props:p, polygon, marker, bounds };
+    allSites.push(site);
+  });
+}
+
+// ===== DRAW / SEARCH FILTER =====
+function drawSites(sites, fit) {
+  currentSites = sites;
+  polygonLayer.clearLayers();
+  clusterLayer.clearLayers();
+  sites.forEach(s => { polygonLayer.addLayer(s.polygon); clusterLayer.addLayer(s.marker); });
+
+  if (fit && sites.length) {
+    const b = L.latLngBounds([]);
+    sites.forEach(s => b.extend(s.bounds));
+    if (!map.getBounds().contains(b)) map.fitBounds(b, { padding:[50,50], maxZoom:14 });
+  }
+  document.getElementById('statsText').textContent = `Showing ${sites.length} of ${allSites.length} boundries`;
+  toggleLayers();
+  updateLabels();
+}
+
+function filterSites(fit = true) {
+  const search = searchInput.value.trim().toLowerCase();
+  const filtered = !search ? allSites : allSites.filter(s => {
+    const hay = [val(s.props, FIELD.code), val(s.props, FIELD.sub)].join(' ').toLowerCase();
+    return hay.includes(search);
+  });
+  drawSites(filtered, fit);
+  updateSearchDropdown(filtered);
+}
+
+function toggleLayers() {
+  if (map.getZoom() <= CLUSTER_MAX_ZOOM) {
+    if (!map.hasLayer(clusterLayer)) map.addLayer(clusterLayer);
+  } else if (map.hasLayer(clusterLayer)) {
+    map.removeLayer(clusterLayer);
+  }
+}
+map.on('zoomend', toggleLayers);
+
+// One label per project code, placed on its largest polygon currently in view
+function updateLabels() {
+  labelLayer.clearLayers();
+  if (map.getZoom() < LABEL_MIN_ZOOM) return;
+  const view = map.getBounds();
+  const best = new Map();
+  currentSites.forEach(s => {
+    if (!view.intersects(s.bounds)) return;
+    const code = val(s.props, FIELD.code);
+    if (!code) return;
+    const ne = s.bounds.getNorthEast(), sw = s.bounds.getSouthWest();
+    const size = (ne.lat - sw.lat) * (ne.lng - sw.lng);
+    const cur = best.get(code);
+    if (!cur || size > cur.size) best.set(code, { site: s, size });
+  });
+  best.forEach(({ site }, code) => {
+    L.marker(site.bounds.getCenter(), {
+      interactive: false,
+      icon: L.divIcon({ className: 'rlb-label', html: `<span>${esc(code)}</span>`, iconSize: null })
+    }).addTo(labelLayer);
+  });
+}
+map.on('moveend', updateLabels);
+
+function zoomToSite(site) {
+  map.stop();
+  map.fitBounds(site.bounds, { padding:[60,60], maxZoom:16, animate:false });
+  site.polygon.openPopup(site.bounds.getCenter());
+}
+
+// ===== SEARCH DROPDOWN =====
+const searchInput = document.getElementById('searchInput');
+const searchDropdown = document.getElementById('searchDropdown');
+
+function updateSearchDropdown(sites) {
+  searchDropdown.innerHTML = '';
+  if (searchInput.value.trim() === '') { searchDropdown.style.display = 'none'; return; }
+
+  const note = (text, style) => {
+    const d = document.createElement('div');
+    d.textContent = text; d.className = 'note'; d.style.cssText = style + 'cursor:default;';
+    searchDropdown.appendChild(d);
+  };
+  if (!sites.length) { note('No results found', 'color:#999;font-style:italic;'); searchDropdown.style.display = 'block'; return; }
+
+  sites.slice(0, 5).forEach(s => {
+    const d = document.createElement('div');
+    const code = val(s.props, FIELD.code), sub = val(s.props, FIELD.sub);
+    const shortSub = sub.length > 10 ? sub.slice(0, 10) + '...' : sub;
+    d.textContent = shortSub ? `${code} – ${shortSub}` : code;
+    d.title = siteLabel(s.props);
+    d.addEventListener('click', () => { searchDropdown.style.display = 'none'; zoomToSite(s); });
+    d._site = s;
+    searchDropdown.appendChild(d);
+  });
+  if (sites.length > 5) note(`Showing 5 of ${sites.length}. Please zoom to one of them to see more polygons sharing the same project code.`,
+    'color:#666;font-style:italic;font-size:12px;border-top:1px solid #eee;white-space:normal;');
+  searchDropdown.style.display = 'block';
+}
+
+searchInput.addEventListener('input', () => filterSites(true));
+searchInput.addEventListener('keydown', e => {
+  const items = [...searchDropdown.querySelectorAll('div')].filter(d => d._site);
+  if (!items.length) return;
+  const i = items.findIndex(d => d.classList.contains('selected'));
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const next = e.key === 'ArrowDown' ? Math.min(i + 1, items.length - 1) : Math.max(i - 1, 0);
+    items.forEach(d => d.classList.remove('selected'));
+    items[next].classList.add('selected');
+    items[next].scrollIntoView({ block:'nearest' });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const pick = items[i >= 0 ? i : 0];
+    searchDropdown.style.display = 'none';
+    zoomToSite(pick._site);
+  }
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) searchDropdown.style.display = 'none';
+});
+
+// ===== TENDER PREVIEW (temporary - never saved unless "Save as permanent RLB") =====
+const previewInput = document.getElementById('previewInput');
+const previewStatus = document.getElementById('previewStatus');
+
+function isPolygonal(f) {
+  return !!(f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
+}
+
+function previewPopup(props) {
+  let html = `<div class="popup-scroll"><div class="popup-field"><span class="popup-label">Tender file:</span><span class="popup-value">${esc(lastPreview.fileName)}</span></div>`;
+  Object.entries(props || {}).slice(0, 8).forEach(([k, v]) => {
+    if (v !== null && v !== undefined && String(v).trim() !== '')
+      html += `<div class="popup-field"><span class="popup-label">${esc(k)}:</span><span class="popup-value">${esc(v)}</span></div>`;
+  });
+  html += '</div><div class="popup-actions">';
+  html += lastPreview.allPolygons
+    ? '<button class="popup-btn" data-action="save">Save as permanent boundary</button>'
+    : '<span class="popup-note">Only polygon data can be saved as a permanent boundary.</span>';
+  return html + '</div>';
+}
+
+function clearPreview() {
+  previewLayer.clearLayers();
+  lastPreview = null;
+  previewStatus.textContent = '';
+}
+
+document.getElementById('previewButton').addEventListener('click', () => previewInput.click());
+document.getElementById('clearPreviewButton').addEventListener('click', clearPreview);
+
+previewInput.addEventListener('change', async () => {
+  const file = previewInput.files[0];
+  previewInput.value = '';   // allow choosing the same file again
+  if (!file) return;
+  previewStatus.textContent = `Reading ${file.name}...`;
+  try {
+    const r = await fetch('/api/preview', {
+      method: 'POST',
+      headers: { 'X-Filename': encodeURIComponent(file.name) },
+      body: file
+    });
+    let data = {};
+    try { data = await r.json(); } catch (e) { /* no JSON body */ }
+    if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+
+    previewLayer.clearLayers();
+    lastPreview = { fileName: file.name, data, allPolygons: data.features.length > 0 && data.features.every(isPolygonal) };
+    L.geoJSON(data, {
+      pane: 'previewPane',
+      style: PREVIEW_STYLE,
+      pointToLayer: (f, ll) => L.circleMarker(ll, { ...PREVIEW_STYLE, radius: 6, pane: 'previewPane' }),
+      onEachFeature: (f, layer) => layer.bindPopup(previewPopup(f.properties), { maxWidth: 420 })
+    }).addTo(previewLayer);
+
+    map.fitBounds(previewLayer.getBounds(), { padding: [60, 60], maxZoom: 16 });
+    previewStatus.textContent = `Preview: ${file.name} – ${data.features.length} feature(s), from ${data.source_crs}`;
+    if (data.warning) alert(data.warning);
+  } catch (e) {
+    previewStatus.textContent = lastPreview ? `Preview: ${lastPreview.fileName}` : '';
+    alert(`Could not preview "${file.name}":\n\n${e.message}`);
+  }
+});
+
+// ===== SAVE AS PERMANENT RLB =====
+const saveModal = document.getElementById('saveModal');
+const fCode = document.getElementById('fCode');
+const fSub = document.getElementById('fSub');
+const fDesc = document.getElementById('fDesc');
+const fNotes = document.getElementById('fNotes');
+const saveConfirm = document.getElementById('saveConfirm');
+
+function openSaveForm() {
+  if (!lastPreview || !lastPreview.allPolygons) return;
+  map.closePopup();
+  const n = lastPreview.data.features.length;
+  document.getElementById('saveModalNote').textContent =
+    `${n} polygon(s) from "${lastPreview.fileName}" will be saved as ${n} record(s) of the same project. ` +
+    `Your name and the date/time are recorded automatically.`;
+  [fCode, fSub, fDesc, fNotes].forEach(el => { el.value = ''; });
+  saveModal.classList.remove('hidden');
+  fCode.focus();
+}
+function closeSaveForm() { saveModal.classList.add('hidden'); }
+
+document.getElementById('saveCancel').addEventListener('click', closeSaveForm);
+saveModal.addEventListener('click', e => { if (e.target === saveModal) closeSaveForm(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !saveModal.classList.contains('hidden')) closeSaveForm(); });
+
+saveConfirm.addEventListener('click', async () => {
+  const code = fCode.value.trim().toUpperCase();
+  if (!code) { alert('Project code is required.'); fCode.focus(); return; }
+  if (!/^[A-Z]{4}\d{2}$/.test(code) &&
+      !confirm(`"${code}" is not in the usual format (4 letters + 2 digits, e.g. SPAG26).\n\nSave anyway?`)) return;
+  if (allSites.some(s => val(s.props, FIELD.code).toUpperCase() === code) &&
+      !confirm(`Project code ${code} already exists on the map.\n\nAdd these polygons to it anyway?`)) return;
+
+  saveConfirm.disabled = true;
+  saveConfirm.textContent = 'Saving...';
+  try {
+    const res = await postJSON('/api/save', {
+      features: lastPreview.data.features,
+      props: {
+        [FIELD.code]: code,
+        [FIELD.sub]: fSub.value.trim(),
+        [FIELD.desc]: fDesc.value.trim(),
+        [FIELD.notes]: fNotes.value.trim()
+      }
+    });
+    closeSaveForm();
+    clearPreview();
+    searchInput.value = '';
+    await loadData(false);
+
+    const fids = new Set(res.fids.map(String));
+    const b = L.latLngBounds([]);
+    allSites.forEach(s => { if (fids.has(val(s.props, FIELD.fid))) b.extend(s.bounds); });
+    if (b.isValid()) map.fitBounds(b, { padding:[60,60], maxZoom:16 });
+    alert(`Saved ${res.fids.length} record(s) for ${code}.`);
+  } catch (e) {
+    alert(`Could not save:\n\n${e.message}`);
+  } finally {
+    saveConfirm.disabled = false;
+    saveConfirm.textContent = 'Save';
+  }
+});
+
+// ===== DELETE (own records only - also checked by the server) =====
+async function deleteRecord(fid) {
+  const site = allSites.find(s => val(s.props, FIELD.fid) === String(fid));
+  const label = site ? siteLabel(site.props) : `fid ${fid}`;
+  if (!confirm(`Delete "${label}" (fid ${fid}) permanently?\n\n` +
+               `It will disappear from the map for everyone. A backup copy of the data is kept.`)) return;
+  try {
+    await postJSON('/api/delete', { fid: Number(fid) });
+    map.closePopup();
+    await loadData(false);
+    alert(`Deleted "${label}".`);
+  } catch (e) {
+    alert(`Could not delete:\n\n${e.message}`);
+  }
+}
+
+// Buttons inside popups (save / delete)
+map.on('popupopen', e => {
+  const el = e.popup.getElement();
+  if (!el) return;
+  el.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', ev => {
+      ev.preventDefault();
+      if (btn.dataset.action === 'save') openSaveForm();
+      if (btn.dataset.action === 'delete') deleteRecord(btn.dataset.fid);
+    });
+  });
+});
+
+// ===== LOAD =====
+async function loadData(first) {
+  const r = await fetch(`${GEOJSON_PATH}?v=${Date.now()}`);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  const geojson = await r.json();
+  buildSites(geojson);
+  filterSites(false);
+  if (first) {
+    const b = L.latLngBounds([]); allSites.forEach(s => b.extend(s.bounds));
+    if (b.isValid()) map.fitBounds(b, { padding:[50,50] });
+  }
+}
+
+(async () => {
+  try {
+    const r = await fetch('/api/whoami');
+    if (r.ok) currentUser = (await r.json()).user || '';
+  } catch (e) { /* not running through serve.py */ }
+  document.getElementById('userText').textContent = currentUser ? `Signed in as ${currentUser}` : '';
+
+  try {
+    await loadData(true);
+  } catch (e) {
+    console.error('GeoJSON error:', e);
+    document.getElementById('statsText').textContent =
+      `Error loading GeoJSON: ${e.message}` + (location.protocol === 'file:' ? ' (open via "Open RLB Map.bat", not by double-clicking the html)' : '');
+  }
+})();
+</script>
+</body>
+</html>
